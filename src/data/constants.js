@@ -1,6 +1,6 @@
 export const DEFAULT_CONFIG = {
     labName: "微想實驗室",
-    labNameFull: "微想實驗室 (Wei Xiang Lab)",
+    labNameFull: "微想實驗室",
     logoUrl: "https://placehold.co/80x80/0052FF/FFFFFF?text=WX",
     department: "國立臺北教育大學 數位科技設計學系 玩具與遊戲設計碩士班",
     departmentLink: "https://dtgd.ntue.edu.tw/",
@@ -16,7 +16,7 @@ export const DEFAULT_CONFIG = {
     adminPassword: "admin", 
     professors: [
         { id: 'p1', name: "林仁智教授", title: "指導教授", description: "專長：人機互動、數位學習、遊戲化設計" },
-        { id: 'p2', name: "許一珍教授", title: "共同指導教授", description: "專長：設計方法、使用者經驗(UX)、玩具設計" }
+        { id: 'p2', name: "許一珍教授", title: "指導教授", description: "專長：設計方法、使用者經驗(UX)、玩具設計" }
     ]
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, doc } from 'firebase/firestore';
 import { db, auth, appId } from './firebase';
 
@@ -20,10 +20,13 @@ import EventsSection from './sections/EventsSection';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import AdminPage from './pages/AdminPage';
 
+// --- 設定你的註冊通行碼 ---
+// 只有輸入正確密碼的人才能註冊帳號 (你可以隨時修改這裡)
+const REGISTRATION_SECRET_CODE = "lab2025"; 
+
 // --------------------------------------------------------
-// 為了避免你還要再建立兩個新檔案，我先把比較簡單的兩個頁面
-// (EventDetailPage, AllProjectsPage) 定義在這裡。
-// 等你熟悉了，可以再把它們移到 pages 資料夾。
+// 簡易頁面元件 (AllProjectsPage, EventDetailPage)
+// 為了方便，先定義在這裡，之後你可以選擇移到 pages 資料夾
 // --------------------------------------------------------
 
 const AllProjectsPage = ({ projects, onBack, onNavigateToDetail }) => {
@@ -105,10 +108,16 @@ const App = () => {
     const [activePage, setActivePage] = useState({ page: 'home', data: null });
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [lastScrollPos, setLastScrollPos] = useState(0);
+    const [theme, setTheme] = useState('light');
+
+    // Auth 相關狀態
     const [showLoginModal, setShowLoginModal] = useState(false); 
     const [loginError, setLoginError] = useState(''); 
-    const [showPassword, setShowPassword] = useState(false); 
-    const [theme, setTheme] = useState('light');
+    const [showPassword, setShowPassword] = useState(false);
+    const [isRegistering, setIsRegistering] = useState(false); // 切換 登入/註冊
+
+    // 判斷是否為正式管理員 (非匿名)
+    const isAdmin = userId && auth.currentUser && !auth.currentUser.isAnonymous;
 
     useEffect(() => {
         setTheme('light');
@@ -144,22 +153,65 @@ const App = () => {
         }
     };
 
-    const handleLoginSubmit = (e) => {
+    // 處理 登入 與 註冊 邏輯
+    const handleAuthSubmit = async (e) => {
         e.preventDefault();
-        const pwd = e.target.password.value;
-        if (pwd === siteConfig.adminPassword) {
+        const email = e.target.email.value;
+        const password = e.target.password.value;
+        setLoginError('');
+
+        try {
+            if (isRegistering) {
+                // 【安全機制】檢查註冊通行碼
+                const secretCode = e.target.secretCode.value;
+                if (secretCode !== REGISTRATION_SECRET_CODE) {
+                    setLoginError("註冊通行碼錯誤！請向管理員索取。");
+                    return;
+                }
+                // 通行碼正確，才允許建立帳號
+                await createUserWithEmailAndPassword(auth, email, password);
+                alert("帳號建立成功！歡迎使用後台。");
+            } else {
+                // 登入模式
+                await signInWithEmailAndPassword(auth, email, password);
+            }
             setShowLoginModal(false);
-            setLoginError(''); 
             navigateTo('admin');
-        } else {
-            setLoginError("密碼錯誤，請再試一次。");
+        } catch (error) {
+            console.error("Auth Error:", error);
+            if (error.code === 'auth/invalid-email') setLoginError("Email 格式不正確");
+            else if (error.code === 'auth/wrong-password') setLoginError("密碼錯誤");
+            else if (error.code === 'auth/user-not-found') setLoginError("找不到此帳號");
+            else if (error.code === 'auth/email-already-in-use') setLoginError("此 Email 已被註冊");
+            else if (error.code === 'auth/weak-password') setLoginError("密碼太弱 (至少6位數)");
+            else if (error.code === 'auth/invalid-credential') setLoginError("帳號或密碼錯誤");
+            else setLoginError("登入失敗：" + error.message);
+        }
+    };
+
+    // 處理登出
+    const handleLogout = async () => {
+        if (window.confirm("確定要登出嗎？")) {
+            await signOut(auth);
+            // 登出後自動切換回匿名登入，確保前台功能正常
+            signInAnonymously(auth);
+            navigateTo('home');
         }
     };
 
     useEffect(() => {
-        const authenticate = async () => { try { await signInAnonymously(auth); } catch (error) { console.error("Auth Error:", error); } };
-        authenticate();
-        const unsubscribe = onAuthStateChanged(auth, (user) => { setUserId(user ? user.uid : null); setIsAuthReady(true); });
+        // 預設先用匿名登入，讓訪客可以看到內容
+        const initAuth = async () => {
+            if (!auth.currentUser) {
+                try { await signInAnonymously(auth); } catch (e) { console.error(e); }
+            }
+        };
+        initAuth();
+        
+        const unsubscribe = onAuthStateChanged(auth, (user) => { 
+            setUserId(user ? user.uid : null); 
+            setIsAuthReady(true); 
+        });
         return () => unsubscribe();
     }, []);
 
@@ -186,32 +238,68 @@ const App = () => {
     return (
         <div className="min-h-screen bg-background text-foreground font-ui relative">
             
+            {/* 登入 / 註冊 Modal */}
             {showLoginModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-card p-6 rounded-2xl shadow-2xl w-full max-w-sm border border-border">
-                        <h3 className="text-xl font-bold mb-4 text-foreground">管理員登入</h3>
-                        <form onSubmit={handleLoginSubmit} className="space-y-4">
-                            <div className="relative">
+                    <div className="bg-card p-6 rounded-2xl shadow-2xl w-full max-w-sm border border-border animate-float">
+                        <h3 className="text-xl font-bold mb-4 text-foreground text-center">
+                            {isRegistering ? '註冊管理員' : '後台登入'}
+                        </h3>
+                        <form onSubmit={handleAuthSubmit} className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground ml-1">Email</label>
+                                <input 
+                                    name="email" 
+                                    type="email" 
+                                    placeholder="yourname@example.com" 
+                                    className="w-full p-3 border border-border bg-input text-foreground rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0052FF]" 
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-1 relative">
+                                <label className="text-xs text-muted-foreground ml-1">密碼</label>
                                 <input 
                                     name="password" 
                                     type={showPassword ? "text" : "password"} 
                                     placeholder="請輸入密碼" 
                                     className="w-full p-3 border border-border bg-input text-foreground rounded-xl pr-10 focus:outline-none focus:ring-2 focus:ring-[#0052FF]" 
-                                    autoFocus 
-                                    onChange={() => setLoginError('')}
+                                    required
                                 />
                                 <button 
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    className="absolute right-3 top-[34px] text-muted-foreground hover:text-foreground"
                                 >
                                     {showPassword ? "👁️" : "🙈"}
                                 </button>
                             </div>
-                            {loginError && <p className="text-red-500 text-sm font-medium">{loginError}</p>}
-                            <div className="flex gap-2">
-                                <Button className="flex-1" type="submit">登入</Button>
-                                <Button className="flex-1" variant="outline" type="button" onClick={() => { setShowLoginModal(false); setLoginError(''); }}>取消</Button>
+
+                            {/* 只有在註冊模式下，才顯示通行碼輸入框 */}
+                            {isRegistering && (
+                                <div className="space-y-1 animate-pulse-glow">
+                                    <label className="text-xs text-[#0052FF] font-bold ml-1">註冊通行碼 (Secret Code)</label>
+                                    <input 
+                                        name="secretCode" 
+                                        type="text" 
+                                        placeholder="請輸入實驗室提供的通行碼" 
+                                        className="w-full p-3 border border-[#0052FF]/50 bg-blue-50/10 text-foreground rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0052FF]" 
+                                        required
+                                    />
+                                </div>
+                            )}
+                            
+                            {loginError && <p className="text-red-500 text-sm font-medium text-center bg-red-50/10 p-2 rounded">{loginError}</p>}
+                            
+                            <div className="flex flex-col gap-3 mt-6">
+                                <Button className="w-full" type="submit">
+                                    {isRegistering ? '驗證並註冊' : '登入'}
+                                </Button>
+                                <div className="flex gap-2 justify-between text-xs text-muted-foreground items-center pt-2 border-t border-border">
+                                    <button type="button" className="hover:text-[#0052FF] underline" onClick={() => {setIsRegistering(!isRegistering); setLoginError('');}}>
+                                        {isRegistering ? '已有帳號？返回登入' : '沒有帳號？註冊一個'}
+                                    </button>
+                                    <button type="button" className="hover:text-red-500" onClick={() => setShowLoginModal(false)}>取消</button>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -225,7 +313,7 @@ const App = () => {
                             <img src={siteConfig.logoUrl} alt="Lab Logo" className={`rounded-lg object-contain ${siteConfig.labName ? 'h-8 w-8 md:h-10 md:w-10' : 'h-10 md:h-12 w-auto'}`} />
                         ) : null}
                         {siteConfig.labName && (
-                            <h1 className="font-display text-lg md:text-2xl text-foreground font-bold truncate">{siteConfig.labName}<span className="hidden md:inline"> (Wei Xiang Lab)</span></h1>
+                            <h1 className="font-display text-lg md:text-2xl text-foreground font-bold truncate">{siteConfig.labName}<span className="hidden md:inline"></span></h1>
                         )}
                     </div>
                     <nav className="hidden lg:flex items-center space-x-4">
@@ -283,7 +371,32 @@ const App = () => {
             <footer className="py-12 border-t border-white/10 inverted-section-bg text-background/80">
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
                     <p className="font-ui text-sm text-white/60">© {new Date().getFullYear()} {siteConfig.labNameFull}. {siteConfig.department.split(' ')[0]}.</p>
-                    <button onClick={() => setShowLoginModal(true)} className="text-xs text-white/20 hover:text-white/50 transition-colors">Admin</button>
+                    
+                    {/* 根據登入狀態顯示不同按鈕 */}
+                    {isAdmin ? (
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs text-white/40 hidden md:inline">已登入：{auth.currentUser?.email}</span>
+                            
+                            {/* 【進入後台按鈕】讓你可以隨時回去 */}
+                            <button 
+                                onClick={() => navigateTo('admin')} 
+                                className="text-xs text-[#4D7CFF] hover:text-white transition-colors border border-[#4D7CFF]/50 px-3 py-1 rounded-full hover:bg-[#4D7CFF]/20"
+                            >
+                                進入後台
+                            </button>
+
+                            <button 
+                                onClick={handleLogout} 
+                                className="text-xs text-red-400 hover:text-red-200 transition-colors border border-red-400/30 px-3 py-1 rounded-full hover:bg-red-500/20"
+                            >
+                                登出
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={() => setShowLoginModal(true)} className="text-xs text-white/20 hover:text-white/50 transition-colors">
+                            Admin Login
+                        </button>
+                    )}
                 </div>
             </footer>
         </div>

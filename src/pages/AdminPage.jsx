@@ -1,17 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { collection, addDoc, serverTimestamp, deleteDoc, doc, setDoc } from 'firebase/firestore';
+
+// 引入上一層的元件與設定
 import SectionLabel from '../components/SectionLabel';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import Input from '../components/Input';
 import { DEFAULT_CONFIG } from '../data/constants';
 
-const AdminPage = ({ userId, db, isAuthReady, labContent, eventsContent, config, setRefreshCount, onExit, appId }) => {
+// 引入上一層的 Firebase 設定
+import { db, appId } from '../firebase'; 
+
+const AdminPage = ({ userId, isAuthReady, labContent, eventsContent, config, setRefreshCount, onExit }) => {
     const [activeTab, setActiveTab] = useState('projects'); 
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState('');
+    
+    // 初始化狀態
     const [configState, setConfigState] = useState(config || DEFAULT_CONFIG);
     const [isDirty, setIsDirty] = useState(false);
+
+    // 【關鍵修復】當 Firebase 下載完成新的 config 時，強制更新內部的表單狀態
+    // 這樣你進入後台時，才不會看到舊的預設值，而是看到資料庫裡最新的標題
+    useEffect(() => {
+        if (config) {
+            setConfigState(config);
+        }
+    }, [config]);
 
     const [formState, setFormState] = useState({
         title: '', abstract: '', description: '', type: 'project', category: 'VR',
@@ -31,7 +46,12 @@ const AdminPage = ({ userId, db, isAuthReady, labContent, eventsContent, config,
     };
 
     const handleChange = (field, value) => { setFormState(prev => ({ ...prev, [field]: value })); setIsDirty(true); };
-    const handleConfigChange = (field, value) => { setConfigState(prev => ({ ...prev, [field]: value })); setIsDirty(true); };
+    
+    const handleConfigChange = (field, value) => { 
+        setConfigState(prev => ({ ...prev, [field]: value })); 
+        setIsDirty(true); 
+    };
+    
     const handleProfChange = (idx, field, value) => { const newProfs = [...configState.professors]; newProfs[idx][field] = value; setConfigState(prev => ({ ...prev, professors: newProfs })); setIsDirty(true); };
     const addProf = () => { setConfigState(prev => ({ ...prev, professors: [...prev.professors, { id: Date.now(), name: '', title: '', description: '' }] })); setIsDirty(true); };
     const removeProf = (idx) => { const newProfs = configState.professors.filter((_, i) => i !== idx); setConfigState(prev => ({ ...prev, professors: newProfs })); setIsDirty(true); };
@@ -56,7 +76,23 @@ const AdminPage = ({ userId, db, isAuthReady, labContent, eventsContent, config,
     const removeGalleryImage = (idx) => { setFormState(prev => ({...prev, galleryImages: prev.galleryImages.filter((_, i) => i !== idx)})); setIsDirty(true); };
 
     const handleDelete = async (col, id) => { if(window.confirm("確定刪除？")) { try { await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/${col}`, id)); setRefreshCount(p=>p+1); } catch(e){ setStatus(e.message); }}};
-    const handleSaveGeneral = async () => { setLoading(true); try { await setDoc(doc(db, `artifacts/${appId}/users/${userId}/lab_config`, 'main'), configState); setStatus('已儲存'); setIsDirty(false); setRefreshCount(p=>p+1); } catch(e){ setStatus(e.message); } finally { setLoading(false); }};
+    
+    const handleSaveGeneral = async () => { 
+        setLoading(true); 
+        try { 
+            // 儲存設定到 Firestore
+            await setDoc(doc(db, `artifacts/${appId}/users/${userId}/lab_config`, 'main'), configState); 
+            setStatus('已儲存'); 
+            setIsDirty(false); 
+            // 強制觸發 App.jsx 重新抓取資料，讓前台也能立刻更新
+            setRefreshCount(p=>p+1); 
+        } catch(e){ 
+            setStatus(e.message); 
+        } finally { 
+            setLoading(false); 
+        }
+    };
+
     const handleSaveContent = async () => { 
         setLoading(true); 
         try {
@@ -133,7 +169,8 @@ const AdminPage = ({ userId, db, isAuthReady, labContent, eventsContent, config,
                             <Input label="關於標題後綴" value={configState.aboutTitleSuffix} onChange={e => handleConfigChange('aboutTitleSuffix', e.target.value)} />
                             <div className="border-t border-border my-4 pt-2">
                                 <h4 className="font-bold text-sm text-foreground mb-3">後台管理設定</h4>
-                                <Input label="後台登入密碼" type="text" value={configState.adminPassword} onChange={e => handleConfigChange('adminPassword', e.target.value)} placeholder="請輸入新密碼" />
+                                {/* 這裡的密碼欄位僅供參考，實際登入是依賴 Firebase Auth */}
+                                <Input label="後台備註 (非登入密碼)" type="text" value={configState.adminPassword} onChange={e => handleConfigChange('adminPassword', e.target.value)} placeholder="可留空" />
                             </div>
                             <div className="border-t border-border my-4 pt-2">
                                 <h4 className="font-bold text-sm text-foreground mb-3">教授列表</h4>

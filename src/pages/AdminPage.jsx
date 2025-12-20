@@ -11,7 +11,7 @@ import { DEFAULT_CONFIG } from '../data/constants';
 // 引入上一層的 Firebase 設定
 import { db, appId } from '../firebase'; 
 
-const AdminPage = ({ userId, isAuthReady, labContent, eventsContent, config, setRefreshCount, onExit }) => {
+const AdminPage = ({ userId, labContent, eventsContent, config, setRefreshCount, onExit }) => {
     const [activeTab, setActiveTab] = useState('projects'); 
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState('');
@@ -63,7 +63,11 @@ const AdminPage = ({ userId, isAuthReady, labContent, eventsContent, config, set
             if(field === 'cover') setFormState(prev => ({...prev, coverImage: base64s[0]}));
             else setFormState(prev => ({...prev, galleryImages: [...prev.galleryImages, ...base64s]}));
             setIsDirty(true);
-        } catch(e){} finally { setLoading(false); }
+        } catch (error) {
+            console.error("圖片讀取或上傳失敗：", error);
+        } finally {
+            setLoading(false);
+        }
     };
     const handleLogoUpload = async (e) => {
         const file = e.target.files[0]; if(!file) return;

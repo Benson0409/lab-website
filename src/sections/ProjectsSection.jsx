@@ -3,7 +3,7 @@ import SectionLabel from '../components/SectionLabel';
 import Button from '../components/Button';
 import { ContentCard } from '../components/Card'; // 引入我們剛才拆分出來的卡片
 
-const ProjectsSection = ({ labContent, scrollToSection, onNavigate }) => (
+const ProjectsSection = ({ labContent, onNavigate }) => (
     <section id="projects" className="py-16 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <SectionLabel>OUR RESEARCH & OUTPUT</SectionLabel>
         <h2 className="font-display text-4xl md:text-5xl font-bold leading-tight mb-16 text-foreground">實驗室的<span className="text-gradient inline-block ml-3">最新成果</span>與技術累積</h2>

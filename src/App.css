@@ -40,3 +40,12 @@
 .read-the-docs {
   color: #888;
 }
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+  /* 在這裡統一攔截，不要在組件內攔截 */
+  margin: 0;
+  padding: 0;
+}
